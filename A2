@@ -1,0 +1,107 @@
+A2: Email server
+
+smtpd_etrn_restrictions = reject
+smtpd_vrfy_restrictions = reject
+
+2.1 sudo apt install postfix
+	sudo dpkg-reconfigure postfix
+	
+	Internet Site with smarthost
+	vm1lab1
+	shawkot
+	vm1lab1, localhost.localdomain, localhost
+	No
+	127.0.0.0/8 \[::ffff:127.0.0.0\]/104 \[::1\]/128 192.168.0.0/24
+	0
+	+
+	all
+
+2.2 where the mail will deliver to the local server or system
+
+2.3 
+The mynetworks parameter defines the network or IP addresses that Postfix considers as trusted or local. Allowing any IP address to be considered as a trusted network can lead to several security issues:
+
+Open Relay Vulnerability:
+
+With mynetworks set to 0.0.0.0/0, your mail server may become an open relay, meaning it accepts and relays emails from any source. This can be exploited by spammers to send large volumes of unsolicited emails through your server, causing it to be blacklisted and impacting its reputation.
+Abuse and Unauthorized Access:
+
+Allowing any IP address to be considered as trusted may enable unauthorized access to your mail server. Attackers could potentially use your server to send spam, launch phishing attacks, or even exploit vulnerabilities within your mail system.
+Increased Risk of Email Spoofing:
+
+A broader mynetworks setting makes it easier for malicious actors to spoof the sender's address when connecting to your server. This can lead to phishing attempts and other forms of email-based attacks.
+Compromised Security and Confidentiality:
+
+Allowing any IP address to be treated as trusted might lead to a false sense of security. It's essential to restrict access to only those networks that legitimately need to send emails through your server.
+Resource Abuse:
+
+If your server is configured to accept emails from any source, it may be exploited to use your server's resources for malicious purposes, potentially causing performance issues or service disruptions.
+
+2.4 
+ETRN (Extended Turn):
+
+Legitimate Use: ETRN is used to request the immediate delivery of queued emails from another mail server. It is often used in scenarios where an email server wants to pull messages from another server.
+
+Potential Misuse: If ETRN is not properly restricted, an attacker could use it to force the immediate delivery of queued emails, potentially causing email flooding or abuse.
+
+VRFY (Verify):
+
+Legitimate Use: VRFY is used to verify the existence of a mailbox or a user in the destination system. It allows the sender to confirm that the recipient's address is valid.
+
+Potential Misuse: VRFY can be exploited by attackers for email reconnaissance. An attacker might use VRFY to enumerate valid email addresses on a system, gathering information that could be used for targeted attacks or spam.
+
+2.5
+mail -s "test subject" shawkot@vm1lab1
+mail body ....
+ctrl+d
+
+Multipurpose Internet Mail Extensions (MIME)
+This indicates the version of the Multipurpose Internet Mail Extensions (MIME) protocol used. MIME is a standard that extends the format of email messages to support text in character sets other than ASCII, as well as attachments of audio, video, images, and application programs.
+
+# installing exim4 on lab2 machine
+
+sudo apt install exim4
+sudo dpkg-reconfigure exim4-config
+sudo service exim4 start
+
+mail # to see mails on lab1
+
+mailq # to see queued email on lab1
+postcat -vq [msg_id] # to read queued email
+
+tail -n 10 /var/log/mail.log # to see log file on lab1
+tail -n 50 /var/log/exim4/mainlog # to see log file on lab2
+
+3.1
+3.2
+
+4. Configuring procmail and spamassassin
+
+#procmail
+
+nano ~/.procmailrc
+sudo nano /etc/postfix/main.cf
+command_line = /usr/bin/procmail -a "$USER"
+sudo systemctl restart postfix
+
+
+#enabling spamassassin
+
+sudo nano /etc/default/spamassassin 
+sudo systemctl enable spamassassin
+
+related file:
+/etc/default/spamassassin
+/etc/spamassassin/local.cf
+
+
+Spam email body:
+XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X
+
+:0:   # Deliver to a file, let Procmail figure out how to lock it
+Use file locking when delivering to a file. 
+
+flags:
+c: Clone message and execute the action(s) in a subprocess if the conditions match. The parent process continues with the original message after the clone process finishes.
+
+A: Execute this recipe if the previous recipe's conditions were met.
