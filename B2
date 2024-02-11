@@ -1,0 +1,162 @@
+
+1. Apache2
+
+port forwarding:
+
+#this command first create a ssh session with the vm on port 10002 and 
+then forward all traffic for 1010 on the host machine to the vm on port 80.
+
+sudo ssh -L 127.0.0.1:1010:127.0.0.1:80 shawkot@127.0.0.1 -p 10002
+
+# serving webpages on terminal
+
+curl localhost
+
+# default webpage localtion in apache2
+
+/var/www/html/
+
+# restart apache2
+sudo systemctl restart apache2
+
+2. Serve a web page using Node.js
+
+# Installing nodejs
+
+sudo apt update
+sudo apt install nodejs
+node -v
+sudo apt install npm
+
+# Installing nvm (node version manager)
+
+wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm -v
+nvm install 14 # installing nodejs version 14
+
+# running and rendering the webpage
+2.1
+node helloworld.js
+curl http://localhost:8080
+
+2.2
+https://nodejs.org/en/learn/getting-started/introduction-to-nodejs
+
+2.3
+https://dev.to/iserioton/event-driven-programming-in-nodejs-975
+Event-Driven Architecture in Node.js:
+
+Event Loop:
+Node.js uses an event loop to handle asynchronous operations. The event loop continuously checks if there are any tasks that need attention, such as I/O operations, and executes the associated callback functions.
+
+Callbacks:
+Callback functions are crucial in Node.js. When an asynchronous operation is initiated, a callback function is provided to be executed upon completion. This allows the program to continue running other tasks while waiting for the asynchronous operation to finish.
+
+Advantages of Node.js's Event-Driven Approach:
+1. Scalability:
+Node.js can handle a large number of concurrent connections without the need for multi-threading. This is achieved through the event loop, which efficiently manages I/O operations without blocking the execution of other tasks.
+
+2. Non-blocking I/O:
+In traditional server-side environments, each incoming request typically corresponds to a new thread. In contrast, Node.js uses non-blocking I/O, allowing it to handle many connections simultaneously.
+
+3. Real-time Applications:
+The event-driven architecture of Node.js is well-suited for real-time applications like chat applications, online gaming, and collaborative tools. It enables efficient handling of multiple concurrent connections and supports bidirectional communication through technologies like WebSockets.
+
+4. Improved Responsiveness:
+Node.js excels in scenarios where responsiveness is crucial. The non-blocking nature of the event loop ensures that the server remains responsive to new requests even during heavy I/O operations, preventing delays in serving other clients.
+
+3. Configuring SSL for Apache2
+
+# enabling https in apache
+
+3.1
+step 1: To enable ssl engine and give the path for ssl certificate and private key,
+configure /etc/apache2/sites-availabe/default-ssl.conf
+
+step 2: include the file "default-ssl.conf" to the main configuration file of apache2, /etc/apache2/apache2.conf
+
+step 3: restart apache2; sudo systemctl restart apache2
+
+troubleshooting: I had some problems enabling apache2 after I edited and added ssl to apache2. I used the following command for troubleshooting:
+
+sudo apache2ctl configtest # this command test the configuration of overall apache2 service.
+
+# enabling ssl module in apache2
+Usually ssl module is enable automatically in apache2 but if it is not, we can enable it by using: sudo a2enmod ssl
+
+# creating a private key
+sudo openssl genrsa -aes128 -out private.key 2048
+
+# creating a certificate signing request (CSR)
+sudo openssl req -new -days 365 -key private.key -out request.csr
+
+# generating ssl certificate
+sudo openssl x509 -in request.csr -out certificate.crt -req -signkey private.key -days 365
+3.2
+3.3
+
+4. Enforcing HTTPS
+
+4.1
+mkdir ~/public_html
+mkdir ~/public_html/secure_secrets
+sudo a2enmod userdir 
+
+# enabling userdir module in apache2
+sudo nano /etc/apache2/mods-available/userdir.conf
+	<Directory /home/*/public_html>
+        AllowOverride FileInfo AuthConfig Limit Indexes
+        Options MultiViews Indexes SymLinksIfOwnerMatch IncludesNoExec
+        Require method GET POST OPTIONS
+        </Directory>
+
+# enabling rewrite module
+sudo a2enmod rewrite 
+sudo service apache2 restart
+
+# creating .htaccess file for enforcing HTTPS
+nano ~/public_html/secure_secrets/.htaccess
+	RewriteEngine On
+	RewriteCond %{HTTPS} off
+	RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Enable .htaccess Overrides
+sudo nano /etc/apache2/sites-available/000-default.conf
+	<Directory "/home/*/public_html/secure_secrets">
+        AllowOverride All
+        Require all granted
+        </Directory>
+
+sudo service apache2 restart
+
+# checking the solution
+lynx http://localhost:80/~shawkot/secure_secrets
+
+4.2
+HTTP Strict Transport Security (HSTS) is a policy mechanism that helps to protect websites against man-in-the-middle attacks such as protocol downgrade attacks[1] and cookie hijacking. It allows web servers to declare that web browsers (or other complying user agents) should automatically interact with it using only HTTPS connections, which provide Transport Layer Security (TLS/SSL), unlike the insecure HTTP used alone. HSTS is an IETF standards track protocol and is specified in RFC 6797
+
+4.3
+The .htaccess file is a powerful configuration file used in Apache web servers to control various aspects of website behavior. It provides a way to override server-wide configurations on a per-directory basis.
+
+when to use:
+
+Per-Directory Configuration:
+.htaccess is useful when you need to apply specific configuration directives to a particular directory or its subdirectories. It allows you to have directory-specific settings without modifying the main server configuration.
+
+URL Rewriting:
+If you need to implement custom URL rewriting rules, such as redirecting URLs, rewriting URLs, or enforcing HTTPS, .htaccess is a common and convenient way to achieve this.
+
+Authentication and Authorization:
+.htaccess is often used to set up authentication and authorization for specific directories, restricting access to certain users or groups.
+
+Error Pages:
+Custom error pages (e.g., 404 Not Found, 403 Forbidden) can be configured in .htaccess to provide a better user experience.
+
+when not to use:
+
+Performance Considerations:
+.htaccess files are read on every request, and their usage can impact server performance, especially on high-traffic websites. If possible, it's more efficient to place configuration directives in the main server configuration to avoid the per-request overhead.
+
+Limited Server Access:
+In shared hosting environments where you have limited access to the server configuration, .htaccess may be your only option for making certain changes. However, if you have full control over the server, consider using the main configuration files for better performance and security.
