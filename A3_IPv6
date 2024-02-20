@@ -1,0 +1,104 @@
+Stateless Address Autoconfiguration (SLAAC):
+IPv6 Prefix Delegation (PD):
+
+2.
+
+2.3
+# adding or deleting static ip to an inteface
+
+sudo ip -4 address del 192.168.1.2/24 dev eth0
+sudo ip address add fd01:2345:6789:abc1::1/64 dev enp0s8
+
+lab1: fd01:2345:6789:abc1::1/64 (enp0s8)
+	  fd01:2345:6789:abc1::1/64 (enp..)
+	  
+lab2: fd01:2345:6789:abc1::2/64
+lab3: fd01:2345:6789:abc2::2/64
+
+# pinging
+
+ping fd01:2345:6789:abc2::1
+ping fd01:2345:6789:abc1::1
+
+2.4
+
+# adding network or route
+sudo ip route add fd01:2345:6789:abc1::/64 via fd01:2345:6789:abc2::1 dev enp0s8
+
+# adding default route
+sudo ip route add default via <GATEWAY_IP> dev <INTERFACE_NAME>
+
+2.5 
+
+# show routing table
+ip route show
+ip -6 route
+ip address show dev enp0s8
+
+In summary, this output indicates that the network interface has an IPv6 address (fd01:2345:6789:abc1::2) with a global scope, and this address is considered valid and preferred forever.
+
+In IPv6 addressing, a double colon :: is used as a shorthand notation to represent consecutive groups of zeros within an IPv6 address. 
+
+# tcpdump
+sudo tcpdump --interface=any -c 20 -w ping6.pcap
+sudo tcpdump -i enp0s8 -w file.pcap icmp6
+
+# reading pcap file
+tcpdump -r <file-name>.pcap
+
+3. IPv6 Router Advertisement Daemon
+
+3.1
+ 
+interface enp0s8 {
+    AdvSendAdvert on;
+    prefix fd01:2345:6789:abc1::/64 {
+        AdvOnLink on;
+        AdvAutonomous on;
+        AdvRouterAddr on;
+    };
+};
+
+interface enp0s9 {
+    AdvSendAdvert on;
+    prefix fd01:2345:6789:abc2::/64 {
+        AdvOnLink on;
+        AdvAutonomous on;
+        AdvRouterAddr on;
+    };
+};
+
+# stopping an interface
+sudo ip link set enp0s8 down
+
+# installing and setting up router advertisement daemon
+sudo apt-get install radvd
+sudo nano /etc/radvd.conf
+sudo systemctl start radvd
+sudo systemctl enable radvd
+
+# checking router advertisement (lab1)
+sudo tcpdump -i enp0s8
+
+sudo sysctl -w net.ipv6.conf.default.forwarding=1 &&
+sudo sysctl -w net.ipv6.conf.all.forwarding=1 &&
+sudo sysctl -w net.ipv6.conf.enp0s3.accept_ra=0
+
+3.1
+prefix is mandatory
+
+3.2
+router solicitation and router advertisement
+
+3.3
+ans: EUI-64 (Extended Unique Identifier)
+When a host receives the Router Advertisement with these settings, it can use the advertised prefix to generate its own IPv6 address. The process involves creating an Interface Identifier (IID) by either using the EUI-64 process (based on the MAC address) or randomly generating the IID.
+
+For example, if a host has the MAC address 00:1a:2b:3c:4d:5e, the EUI-64 process would involve inserting fffe in the middle of the MAC address and inverting the seventh bit. The resulting IID would then be concatenated with the advertised prefix to form the host's IPv6 address.
+
+3.4
+# traceroute command
+traceroute6 fd01:2345:6789:abc2:a00:27ff:fecc:21a9
+
+jool
+tayga
