@@ -1,0 +1,269 @@
+sudo named-checkconf # to check the bind configuration
+sudo journalctl -xeu named.service
+tail -n 50 /var/log/syslog
+
+
+2. Caching-only nameserver
+2.1
+
+# add the following lines to /etc/bind/named.conf.options file
+
+options {
+    directory "/var/cache/bind";
+    recursion yes;
+
+    allow-query { localhost; <your_local_network>; };
+    allow-recursion { localhost; <your_local_network>; };
+
+    forwarders {
+        8.8.8.8;
+    };
+
+    dnssec-validation auto;
+
+    auth-nxdomain no;    # conform to RFC1035
+    listen-on-v6 { any; };
+};
+
+# add the following lines to /etc/bind/named.conf.local file
+
+acl "trusted" {
+    localhost;
+    <your_local_network>;
+};
+
+# restart the bind server
+sudo systemctl restart bind9
+
+# testing the dns server
+edit /etc/resolv.conf file in the client pc and add the following:
+nameserver 192.168.1.232 (i.e. ns1)
+Also, comment out the default nameserver for example "nameserver 127.0.0.53"
+
+then verify with the follwing command:
+dig www.aalto.fi
+
+2.2
+
+Recursive Query:
+In a recursive query, a DNS resolver (client) delegates the entire resolution process to the DNS server. The DNS server is expected to provide a complete and final answer to the query.
+The resolver asks the DNS server to resolve a domain name, and the DNS server, if necessary, communicates with other DNS servers to find the authoritative answer. The DNS server returns the final result to the resolver.
+
+Iterative Query:
+In an iterative query, the DNS server provides a referral or a reference to another DNS server that might have the answer. The resolver, in turn, makes additional queries to different DNS servers until it reaches an authoritative DNS server that provides the final answer.
+
+3. Create your own tld .insec
+
+3.1
+step 1: add the zone entries to the named.conf.local file
+step 2: create two zone files, one for forward and one for reverse.
+step 3: reload the bind9 service
+
+Forward zone file:
+
+$TTL 60
+@       IN      SOA     ns1.insec. hostmaster.insec. (
+                        2024022401 ; Serial
+                        60         ; Refresh
+                        60         ; Retry
+                        604800     ; Expire
+                        60 )       ; Negative Cache TTL
+
+        IN      NS      ns1.insec.
+        IN      MX      10 mail.insec.
+
+ns1     IN      A       192.168.1.232
+mail    IN      A       192.168.1.232
+
+reverse zone file:
+
+$TTL 60
+@       IN      SOA     ns1.insec. hostmaster.insec. (
+                        2024022401 ; Serial
+                        60         ; Refresh
+                        60         ; Retry
+                        604800     ; Expire
+                        60 )       ; Negative Cache TTL
+
+        IN      NS      ns1.insec.
+
+232       IN      PTR     ns1.insec.
+2       IN      PTR     mail.insec.
+
+3.3
+We have to use AAAA record type, instead of A, to add ipv6.
+
+4. Create a slave server for .insec
+4.1
+The transferred file is in /var/cache/bind
+4.2
+step 1: add "allow-transfer { slave-ip; }; and also-notify { slave-ip; }; in named.conf.local file under the zone definition.
+step  2: add an entry for slave  server (NS) in the zone file 
+step 3: increment  the serial number in zone files.
+step 4: reload bind9 on both machine
+step 5: change the default resolv.conf file to use the slave server instead of master and then try to dig an address.
+4.3
+
+5. Create a subdomain .not.insec.
+5.1
+step 1: create a delegation on ns1 in /etc/bind/db.insec file
+We need to add an entry for .not.insec subdomain in that file. For example,
+
+IN      NS      ns2.not.insec.
+IN      NS      ns3.not.insec.
+
+step 2: add a zone entry on ns2 in /etc/bind/named.conf.local
+we need to add the subdomain not.insec in that file and make ns2 as the master. To enable, slave, we also need to allow-transfer and provide slave's IP as before. I also added acl list to add the 192.168.2.0/24 network.
+
+acl "trusted" {
+    localhost;
+    192.168.2.0/24;
+};
+zone "not.insec" {
+    type master;
+    file "/etc/bind/db.not.insec";
+    allow-update { none; };
+    allow-transfer { 192.168.2.233; };
+    also-notify { 192.168.2.233; };
+};
+step 3: add the zone file for not.insec subdomain
+Then we need to create the zone file for not.insec subdomain on ns2 in /etc/bind/db.not.insec file.
+
+$TTL 60
+@       IN      SOA     ns2.not.insec. hostmaster.not.insec. (
+                        2024022402 ; Serial
+                        60         ; Refresh
+                        60         ; Retry
+                        604800     ; Expire
+                        60 )       ; Negative Cache TTL
+
+        IN      NS      ns2.not.insec.
+        IN      NS      ns3.not.insec.
+
+ns2     IN      A       192.168.2.232
+ns3     IN      A       192.168.2.233
+
+step 4: Finally, enable slave configuration in the slave server, in this case ns3.
+In this step, we just need to add an zone entry in the named.conf.local file in ns3 and specify the master server ip address.
+
+zone "not.insec" {
+    type slave;
+    masters { 192.168.2.232; };  // Replace <ns1_IP> with the actual IP of ns1
+    file "/var/cache/bind/db.not.insec";
+};
+
+5.2
+
+6. Implement transaction signatures
+step 1: generate tsig key
+
+tsig-keygen -a hmac-sha1 s2-s3
+
+key "s2-s3" {
+        algorithm hmac-sha1;
+        secret "nvbVwau47zo/AO641Bd28fOx59A=";
+};
+
+add the key directly to the named.conf file or include the key in a separate file and then add include /etc/bind/file.key" to named.conf file.
+
+step -2: instruct both server to use the generated key.
+
+server 192.168.2.233 {
+  keys { s2-s3 ;};
+};
+
+step 3: reload the bind service
+
+step 4: verify the tsig
+we can increment the serial number in zone file and then restart the bind9 service. 
+Then try to pull the zone file from slave server by using the following command.
+Finally, check the log file at /var/log/syslog to check the transfer status.
+
+dig AXFR @192.168.2.232 ns2.not.insec
+dig @192.168.2.232 -k /etc/bind/tsig-key.conf ns2.not.insec AXFR
+dig AXFR @192.168.2.232 ns2.not.insec -y s2-s3:nvbVwau47zo/AO641Bd28fOx59A=
+
+6.2
+TSIG (Transaction Signature):
+-- use symmetric key algorithm
+-- main focus is in zone transfer and update
+-- purpose: authentication and data integrity
+
+SIG(0):
+-- Uses public key cryptography. Use digital signature to verify the other part.
+-- main focus is to authenticate and ensure integrity to query and response messages.
+-- not widely used.
+
+7. Pi-hole DNS sinkhole
+
+# install pi-hole using curl
+curl -sSL https://install.pi-hole.net | bash
+
+# add login password for web interface
+pihole -a -p
+
+# to enable pihole-FTL as the DNS server, we need to stop bind9 first.
+sudo systemctl stop bind9
+
+# to block a domain, we can use following command.
+pihole -b google.com
+
+# checking pihole status
+sudo service pihole-FTL status
+
+# to restart pihole service. After blocking or removing a site from blocklist, we need to restart the pihole-FTL service
+sudo systemctl restart pihole-FTL
+
+# to remove a site from blocklist
+
+sudo pihole -b -d google.com
+sudo pihole -g # update the pihole blocklists
+
+pihole uninstall # to uninstall pihole
+sudo systemctl stop pihole-FTL # stop pihole-FTL
+sudo pihole -a -p new_port_number # to enable pihole to use a specific port number
+pihole -r # to reconfigure the pihole.
+
+7.1
+When a site is blocked by Pi-hole, the DNS response from Pi-hole will typically contain a null IP address (0.0.0.0) in the answer section. This is a deliberate action by Pi-hole to prevent the resolution of blocked domains. Instead of redirecting to an actual IP address, Pi-hole replies with 0.0.0.0, effectively preventing the client from reaching the blocked domain.
+
+Here's why you see 0.0.0.0 in the answer section of dig queries for blocked sites:
+
+Blocking Mechanism:
+Pi-hole works by acting as a DNS sinkhole. When a domain is on the blocklist, Pi-hole responds to DNS queries for that domain with the null IP address 0.0.0.0.
+
+Preventing Resolution:
+By returning 0.0.0.0, Pi-hole ensures that the client device does not resolve the blocked domain to a valid IP address. This prevents the device from establishing a connection to the blocked site.
+
+Transparency:
+The use of 0.0.0.0 is a transparent way to handle blocked domains without requiring additional network traffic or redirects. It's a common practice for DNS sinkholes.
+
+7.2
+We can select our upstream or custom DNS server during the pihole installation. In that case, we need to configure pihole to use a different Port rather than 53.
+We can use Pi-hole alongside a custom DNS server by configuring Pi-hole to forward DNS queries to our custom DNS server. Here’s how to set it up:
+
+Install and Set Up Pi-hole:
+First, make sure you have Pi-hole installed and configured on your network. If not, follow the installation instructions for your platform from the official Pi-hole documentation.
+
+Configure Custom DNS Server:
+Identify the IP address of your custom DNS server (e.g., 192.168.1.100).
+Log in to the Pi-hole web interface (usually accessible at http://pi.hole/admin).
+Go to Settings > DNS.
+Under Upstream DNS Servers, choose Custom.
+Enter the IP address of your custom DNS server (e.g., 192.168.1.100).
+Save the settings.
+Restart Pi-hole:
+After changing the DNS settings, restart the Pi-hole service:
+sudo systemctl restart pihole-FTL
+
+Test Configuration:
+Verify that Pi-hole is forwarding DNS queries to your custom DNS server:
+Run a DNS query using Pi-hole (e.g., dig google.com).
+Check the logs on your custom DNS server to see if it receives the queries.
+Custom DNS Server Configuration:
+Ensure that your custom DNS server is properly configured to handle DNS queries.
+If your custom DNS server performs any filtering or blocking, adjust its configuration as needed.
+
+Monitor and Troubleshoot:
+Monitor Pi-hole logs and check for any issues related to DNS forwarding.
+If you encounter problems, review the logs and adjust the configuration accordingly.

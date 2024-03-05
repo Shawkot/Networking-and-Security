@@ -1,0 +1,51 @@
+https://www.gnupg.org/gph/en/manual.html#AEN136
+
+lsmod # list all the loaded module
+modprobe <mod-name> # to load a module
+modprobe -r <mod-name> # to remove a loaded module.
+
+# creating the key-pair
+
+gpg --full-generate-key
+real name: shawkot
+passphrase: 1234
+
+# list gpg key
+
+gpg --list-keys
+
+# delete a gpg key
+
+gpg --delete-secret-keys 0C2116AA5488111BE828961CE4ADDF04BDC74F99
+gpg --delete-keys 0C2116AA5488111BE828961CE4ADDF04BDC74F99
+
+# exporting a gpg key 
+
+gpg --export --armor --output server1.pub
+
+# exchanging the public key
+
+scp server1.pub vagrant@192.168.1.11:/home/vagrant
+
+# importing the key
+
+gpg --import server1.pub
+
+# verifying the key
+
+gpg --edit-key blake@cyb.org
+
+fpr
+sign
+check
+
+# to add digital sign
+
+gpg --output test2.sig --sign test2.txt
+
+# to verify the signature
+gpg --verify test2.sig
+
+# to verify and decrypt a file
+gpg --output test2 --decrypt test2.sig
+
